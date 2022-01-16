@@ -1,0 +1,64 @@
+name: aws-build-code
+env:
+  EB_PACKEGE_S3_BUCKET : "github-my"
+  EB_APPLICATION_NAME  : "github-Flask2"
+  EB_ENVIRONMENT_NAME  : "Githubflask2-env"
+  DEPLOY_PACKAGE_NAME  : "flask_app_${{ github.sha }}.zip"
+  AWS_REGION_NAME      : "us-east-1"
+
+on:
+  push:
+    branches:
+      - master
+jobs:
+   my_ci_part:
+     runs-on: ubuntu-latest
+
+
+     steps:
+     - name: git clone our repo
+       uses: actions/checkout@v1
+
+     - name: Create ZIP
+       run: zip -r ${{ env.DEPLOY_PACKAGE_NAME }} ./ -x *.git*
+
+
+     - name: aws access
+       uses: aws-actions/configure-aws-credentials@v1
+       with:
+         aws-access-key-id: ${{ secrets.AWS_ACCESS }}
+         aws-secret-access-key: ${{ secrets.AWS_KEY }}
+         aws-region: ${{ env.AWS_REGION_NAME }}
+
+     - name: Copy to S3
+       run : aws s3 cp ${{ env.DEPLOY_PACKAGE_NAME }} s3://${{ env.EB_PACKEGE_S3_BUCKET }}
+
+     - name: feadback
+       run : echo "CI Pipeline - OK"
+
+   my_cd_part:
+     runs-on: ubuntu-latest
+     needs: [my_ci_part]
+
+     steps:
+
+     - name: aws access
+       uses: aws-actions/configure-aws-credentials@v1
+       with:
+         aws-access-key-id: ${{ secrets.AWS_ACCESS }}
+         aws-secret-access-key: ${{ secrets.AWS_KEY }}
+         aws-region: ${{ env.AWS_REGION_NAME }}
+
+     - name: Create EBA
+       run: |
+          aws elasticbeanstalk create-application-version \
+          --application-name ${{ env.EB_APPLICATION_NAME }} \
+          --source-bundle S3Bucket="${{ env.EB_PACKEGE_S3_BUCKET }}",S3Key="${{ env.DEPLOY_PACKAGE_NAME }}" \
+          --version-label "Vers-${{ github.sha }}" \
+          --description "CommitSHA-${{ github.sha }}"
+
+     - name: Deploy EBA
+       run: aws elasticbeanstalk update-environment  --environment-name ${{ env.EB_ENVIRONMENT_NAME }} --version-label "Vers-${{ github.sha }}"
+
+     - name: feadback
+       run : echo "CD Pipeline - OK"
